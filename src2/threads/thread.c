@@ -187,7 +187,7 @@ thread_create (const char *name, int priority,
   //added at lab2. It saves the pointer to parent thread that created it
   t->parent=thread_current();
   //added at lab2. It saves itself as child to the parent's child list
-  list_push_back(&t->parent->child,&t->child_elem);
+  list_push_back(&(t->parent->child),&(t->child_elem));
   //added at lab2 for wait in syscall.c
   t->called_wait=false;
    //added at lab2 for exit in syscall.c used to check whether child exited
@@ -471,6 +471,7 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
+  int i;
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -484,11 +485,12 @@ init_thread (struct thread *t, const char *name, int priority)
 
   //added in lab2
   // t->next_fd=3;//save 0,1,2 for std in out err
-  t->fdt={NULL.}; //initialize array with all 0
+  for(i=0 ; i<64;i++)
+    t->fdt[i]=NULL; //initialize array with all 0
   sema_init(t->sema_exec,0);
   sema_init(t->sema_wait,0);
   t->parent=NULL;
-  list_init (&t->child); //init the child process list
+  list_init (&(t->child)); //init the child process list
   //for file descriptor table
   
   list_push_back (&all_list, &t->allelem);

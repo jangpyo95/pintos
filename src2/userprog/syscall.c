@@ -1,22 +1,42 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
+#include "filesys/filesys.c"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
+#include "threads/vaddr.h"
+#include "devices/shutdown.c"
 
-static void syscall_handler (struct intr_frame *);
+static struct lock filesys_lock;
+static void syscall_handler(struct intr_frame *);
+void halt(void);
+int wait(pid_t pid);
+void exit(int status);
+pid_t exec(const char *cmd_line);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
+int open(const char *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
+int write(int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close(int fd);
+
 
 void
-syscall_init (void) 
+syscall_init(void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
  //added
- lock_init(filesys_lock);
+ lock_init(&filesys_lock);
 
 }
 
 //added
-void check_pointer (void* pointer){
+void check_pointer(void* pointer){
     if(pointer==NULL)
         exit(-1);
     if(!is_user_vaddr(pointer))
@@ -25,10 +45,10 @@ void check_pointer (void* pointer){
 
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler(struct intr_frame *f UNUSED) 
 {
-  uint32_t * ff = f->esp
-  swithch(*(uint32_t*)(f->esp)){
+  uint32_t * ff = f->esp;
+  switch(*(uint32_t*)(f->esp)){
 
   case SYS_HALT:                   /* Halt the operating system. */
 	halt();
@@ -46,8 +66,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 	f->eax = wait((pid_t)*(uint32_t*)(f->esp+4));
 	break;
   case SYS_CREATE:                 /* Create a file. */
-        check_pointer(f->esp + WORD);
-	f->eax = create((const char *)ff[1],(unsigned)ff[2])
+        check_pointer(f->esp + 4);
+	f->eax = create((const char *)ff[1],(unsigned)ff[2]);
 	break;
   case SYS_REMOVE:                 /* Delete a file. */
         check_pointer(f->esp + 4);
@@ -55,36 +75,35 @@ syscall_handler (struct intr_frame *f UNUSED)
 	break;
   case SYS_OPEN:                   /* Open a file. */
         check_pointer(f->esp + 4);
-	f->eax = open((const char *) ff[1]));
+	f->eax = open((const char *) ff[1]);
 	break;
   case SYS_FILESIZE:               /* Obtain a file's size. */
-        check_pointer(f->esp + WORD);
-	f->eax = read((int)ff[1]);
+        check_pointer(f->esp + 4);
+	f->eax = filesize((int)ff[1]);
 	break;
   case SYS_READ:                   /* Read from a file. */
-        check_pointer(f->esp + WORD);
+        check_pointer(f->esp + 4);
 	f->eax = read((int)ff[1],(void*)ff[2],(unsigned)ff[3]);
 	break;
   case SYS_WRITE:                  /* Write to a file. */
-        check_pointer(f->esp + WORD);
+        check_pointer(f->esp + 4);
 	f->eax = write((int)ff[1], (void*)ff[2],(unsigned)ff[3]);
 	break;
   case SYS_SEEK:                   /* Change position in a file. */
-        check_pointer(f->esp + WORD);
+        check_pointer(f->esp + 4);
 	seek((int)ff[1],(unsigned)ff[2]);
 	break;
   case SYS_TELL:                   /* Report current position in a file. */
-        check_pointer(f->esp + WORD);
+        check_pointer(f->esp + 4);
 	f->eax = tell((int)ff[1]);
 	break;
   case SYS_CLOSE:                  /* Close a file. */
-        check_pointer(f->esp + WORD);
+        check_pointer(f->esp + 4);
 	close((int)ff[1]);
 	break;
   default:
 	printf("system call error\n");
-	sys_exit(-1);
-	break;
+	exit(-1);
   }
   printf ("system call!\n");
   thread_exit ();
@@ -146,23 +165,24 @@ pid_t exec(const char *cmd_line){
     return pid;
 }
 
-bool create (const char *file, unsigned initial_size){
+bool create(const char *file, unsigned initial_size){
     //check address of file (to do)
     check_pointer(file);
     return filesys_create(file,(off_t) initial_size);
 }
 
-bool remove (const char *file){
+bool remove(const char *file){
     //check validity of address (to do)
     check_pointer(file);
     return filesys_remove(file);
 }
 
-int open (const char *file){
+int open(const char *file){
     check_pointer(file);
     //put a lock on the file
     lock_acquire(&filesys_lock);
-    int i, rtrn=-1;
+    int rtrn=-1;
+    unsigned i;
     char *fileName;
     struct file *openedFile = filesys_open(file);
     if(openedFile==NULL){
@@ -186,7 +206,8 @@ int filesize(int fd){
     //check if fd is valid
     if(thread_current() -> fdt[fd]==NULL)
         exit(-1);
-    return (int)file_length(thread_current()->file_descriptor[fd]);
+    //chage file_discriptor=> fdt
+    return (int)file_length(thread_current()->fdt[fd]);
 }
 
 int read(int fd, void *buffer, unsigned size){
@@ -202,7 +223,8 @@ int read(int fd, void *buffer, unsigned size){
         }
     } else if(fd>2){
         //if fd is null exit
-        if(thread_current()->file_descriptor[fd] == NULL){
+        //change -> fdt
+        if(thread_current()->fdt[fd] == NULL){
             lock_release(&filesys_lock);
             exit(-1);
         }

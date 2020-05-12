@@ -125,8 +125,11 @@ process_wait (tid_t child_tid UNUSED)
 {
     int exitStat=-1;
     struct thread *childThr=NULL;
-    for(temp_elem=list_begin(&thread_current()->child);
-        temp_elem!=list_end(&thread_current()->child);
+    struct thread *temp_thread;
+    struct list_elem *temp_elem;
+    struct thread *cur = thread_currnet();
+    for(temp_elem=list_begin(&(thread_current()->child));
+        temp_elem!=list_end(&(thread_current()->child));
         temp_elem=list_next(temp_elem)){
             //looping through the child list to find the one with pid
             childThr=list_entry(temp_elem,struct thread, child_elem);
@@ -134,8 +137,6 @@ process_wait (tid_t child_tid UNUSED)
                 break;
         }   
     
-    //added
-  struct thread *cur=thread_cuurent();
   sema_down(&cur->sema_wait);
   //blocks the parent thread
   // thread_block();
